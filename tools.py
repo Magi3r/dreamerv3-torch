@@ -14,8 +14,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch import distributions as torchd
-from torch.utils.tensorboard import SummaryWriter
-
+from tensorboardX import SummaryWriter
 
 to_np = lambda x: x.detach().cpu().numpy()
 
@@ -152,7 +151,7 @@ def simulate(
         if done.any():
             indices = [index for index, d in enumerate(done) if d]
             results = [envs[i].reset() for i in indices]
-            results = [r() for r in results]
+            results = [r()[0] for r in results]
             for index, result in zip(indices, results):
                 t = result.copy()
                 t = {k: convert(v) for k, v in t.items()}
@@ -177,7 +176,8 @@ def simulate(
         # step envs
         results = [e.step(a) for e, a in zip(envs, action)]
         results = [r() for r in results]
-        obs, reward, done = zip(*[p[:3] for p in results])
+        obs, reward, terminated, truncated = zip(*[p[:4] for p in results])
+        done = np.array(terminated) | np.array(truncated)
         obs = list(obs)
         reward = list(reward)
         done = np.stack(done)
@@ -185,9 +185,11 @@ def simulate(
         length += 1
         step += len(envs)
         length *= 1 - done
+        is_lasts = []
         # add to cache
         for a, result, env in zip(action, results, envs):
-            o, r, d, info = result
+            o, r, d, is_last, info = result
+            is_lasts.append(is_last)
             o = {k: convert(v) for k, v in o.items()}
             transition = o.copy()
             if isinstance(a, dict):
@@ -199,7 +201,7 @@ def simulate(
             add_to_cache(cache, env.id, transition)
 
         if done.any():
-            indices = [index for index, d in enumerate(done) if d]
+            indices = [index for index, d in enumerate(done) if d or is_lasts[index]]
             # logging for done episode
             for i in indices:
                 save_episodes(directory, {envs[i].id: cache[envs[i].id]})
@@ -744,7 +746,7 @@ class Optimizer:
             "sgd": lambda: torch.optim.SGD(parameters, lr=lr),
             "momentum": lambda: torch.optim.SGD(parameters, lr=lr, momentum=0.9),
         }[opt]()
-        self._scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+        self._scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
     def __call__(self, loss, params, retain_graph=True):
         assert len(loss.shape) == 0, loss.shape

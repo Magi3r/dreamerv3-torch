@@ -7,7 +7,7 @@ import sys
 os.environ["MUJOCO_GL"] = "osmesa"
 
 import numpy as np
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 
 sys.path.append(str(pathlib.Path(__file__).parent))
 
@@ -235,14 +235,20 @@ def main(config):
         directory = config.evaldir
     eval_eps = tools.load_episodes(directory, limit=1)
     make = lambda mode, id: make_env(config, mode, id)
-    train_envs = [make("train", i) for i in range(config.envs)]
-    eval_envs = [make("eval", i) for i in range(config.envs)]
+    # train_envs = [make("train", i) for i in range(config.envs)]
+    # eval_envs = [make("eval", i) for i in range(config.envs)]
+    # if config.parallel:
+    #     train_envs = [Parallel(env, "process") for env in train_envs]
+    #     eval_envs = [Parallel(env, "process") for env in eval_envs]
+    # else:
+    #     train_envs = [Damy(env) for env in train_envs]
+    #     eval_envs = [Damy(env) for env in eval_envs]
     if config.parallel:
-        train_envs = [Parallel(env, "process") for env in train_envs]
-        eval_envs = [Parallel(env, "process") for env in eval_envs]
+        train_envs = [Parallel(lambda: make_env(config, "train", i), "process") for i in range(config.envs)]
+        eval_envs = [Parallel(lambda: make_env(config, "eval", i), "process") for i in range(config.envs)]
     else:
-        train_envs = [Damy(env) for env in train_envs]
-        eval_envs = [Damy(env) for env in eval_envs]
+        train_envs = [Damy(lambda: make_env(config, "train", i)) for i in range(config.envs)]
+        eval_envs = [Damy(lambda: make_env(config, "eval", i)) for i in range(config.envs)]
     acts = train_envs[0].action_space
     print("Action Space", acts)
     config.num_actions = acts.n if hasattr(acts, "n") else acts.shape[0]
@@ -343,7 +349,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--configs", nargs="+")
     args, remaining = parser.parse_known_args()
-    configs = yaml.safe_load(
+    yaml = YAML(typ='safe', pure=True)
+    configs = yaml.load(
         (pathlib.Path(sys.argv[0]).parent / "configs.yaml").read_text()
     )
 

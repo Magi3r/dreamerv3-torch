@@ -61,11 +61,11 @@ class Crafter:
         return self._env.render()
 
     def reset(self):
-        image = self._env.reset()
+        image, info = self._env.reset()
         obs = {
             "image": image,
             "is_first": True,
             "is_last": False,
             "is_terminal": False,
         }
-        return obs
+        return obs, info

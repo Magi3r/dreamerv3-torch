@@ -126,7 +126,7 @@ class MinecraftBase(gym.Env):
         self._max_inventory = None
 
         with self._LOCK:
-            obs = self._env.reset()
+            obs, info = self._env.reset()
         obs["is_first"] = True
         obs["is_last"] = False
         obs["is_terminal"] = False
@@ -135,7 +135,7 @@ class MinecraftBase(gym.Env):
         self._sticky_attack_counter = 0
         self._sticky_jump_counter = 0
         self._pitch = 0
-        return obs
+        return obs, info
 
     def _obs(self, obs):
         obs = self._flatten(obs)

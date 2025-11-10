@@ -33,7 +33,8 @@ class Parallel:
 
     @staticmethod
     def _respond(ctor, state, message, name, *args, **kwargs):
-        state = state or ctor
+        if state is None:
+            state = ctor() if callable(ctor) else ctor
         if message == PMessage.CALLABLE:
             assert not args and not kwargs, (args, kwargs)
             result = callable(getattr(state, name))
@@ -81,7 +82,8 @@ class ProcessPipeWorker:
         import multiprocessing
         import cloudpickle
 
-        self._context = multiprocessing.get_context("spawn")
+        # self._context = multiprocessing.get_context("spawn")
+        self._context = multiprocessing.get_context("fork")
         self._pipe, pipe = self._context.Pipe()
         fn = cloudpickle.dumps(fn)
         initializers = cloudpickle.dumps(initializers)
@@ -197,7 +199,7 @@ class Future:
 
 class Damy:
     def __init__(self, env):
-        self._env = env
+        self._env = env()
 
     def __getattr__(self, name):
         return getattr(self._env, name)
@@ -205,5 +207,5 @@ class Damy:
     def step(self, action):
         return lambda: self._env.step(action)
 
-    def reset(self):
-        return lambda: self._env.reset()
+    def reset(self, seed = None):
+        return lambda: self._env.reset(seed = seed)

@@ -1,5 +1,5 @@
 import datetime
-import gym
+import gymnasium as gym
 import numpy as np
 import uuid
 
@@ -12,18 +12,18 @@ class TimeLimit(gym.Wrapper):
 
     def step(self, action):
         assert self._step is not None, "Must reset environment."
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, truncated, info = self.env.step(action)
         self._step += 1
         if self._step >= self._duration:
-            done = True
+            truncated = True
             if "discount" not in info:
                 info["discount"] = np.array(1.0).astype(np.float32)
             self._step = None
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
-    def reset(self):
+    def reset(self, seed= None, options= None):
         self._step = 0
-        return self.env.reset()
+        return self.env.reset(seed=seed, options=options)
 
 
 class NormalizeActions(gym.Wrapper):
@@ -62,8 +62,8 @@ class OneHotAction(gym.Wrapper):
             raise ValueError(f"Invalid one-hot action:\n{action}")
         return self.env.step(index)
 
-    def reset(self):
-        return self.env.reset()
+    def reset(self, seed = None, options = None):
+        return self.env.reset(seed = seed, options = options)
 
     def _sample_action(self):
         actions = self.env.action_space.n
@@ -84,16 +84,16 @@ class RewardObs(gym.Wrapper):
         self.observation_space = gym.spaces.Dict(spaces)
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, truncated, info = self.env.step(action)
         if "obs_reward" not in obs:
             obs["obs_reward"] = np.array([reward], dtype=np.float32)
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
-    def reset(self):
-        obs = self.env.reset()
+    def reset(self, seed = None, options = None):
+        obs, info = self.env.reset(seed = seed, options = options)
         if "obs_reward" not in obs:
             obs["obs_reward"] = np.array([0.0], dtype=np.float32)
-        return obs
+        return obs, info
 
 
 class SelectAction(gym.Wrapper):
@@ -111,7 +111,7 @@ class UUID(gym.Wrapper):
         timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         self.id = f"{timestamp}-{str(uuid.uuid4().hex)}"
 
-    def reset(self):
+    def reset(self, seed = None, options = None):
         timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         self.id = f"{timestamp}-{str(uuid.uuid4().hex)}"
-        return self.env.reset()
+        return self.env.reset(seed = seed, options = options)

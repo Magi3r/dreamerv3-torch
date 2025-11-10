@@ -1,0 +1,31 @@
+[project]
+name="dreamerv3"
+requires-python = ">=3.9,<3.14" # cuda 12.4 supports up to 3.13
+version="1"
+dependencies = [
+    # "ale-py>=0.11.2",
+    "einops>=0.8.1",
+    "gymnasium>=1.1.1",
+    "matplotlib>=3.9.4",
+    "moviepy>=2.2.1",
+    "numpy>=2.0.2",
+    "opencv-python>=4.11.0.86",
+    "protobuf>=6.33.0",
+    "requests>=2.32.5",
+    "ruamel-yaml>=0.18.16",
+    "tensorboardx>=2.6.4", # needed for video logging
+    "torch>=2.6.0",
+]
+
+[project.optional-dependencies]
+atari = ["ale-py>=0.11.2"]
+
+[tool.uv.sources]
+# Depends on the cuda capabilities
+torch = [
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

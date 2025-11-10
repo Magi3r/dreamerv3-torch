@@ -1,8 +1,10 @@
-import gym
+import gymnasium as gym
 import numpy as np
+import ale_py
 
+gym.register_envs(ale_py)
 
-class Atari:
+class Atari(gym.Env):
     LOCK = None
     metadata = {}
 
@@ -38,7 +40,7 @@ class Atari:
             from PIL import Image
 
             self._image = Image
-        import gym.envs.atari
+        # import gym.envs.atari
 
         if name == "james_bond":
             name = "jamesbond"
@@ -51,20 +53,27 @@ class Atari:
         self._length = length
         self._random = np.random.RandomState(seed)
         with self.LOCK:
-            self._env = gym.envs.atari.AtariEnv(
-                game=name,
-                obs_type="image",
+            # self._env = gym.envs.atari.AtariEnv(
+            #     game=name,
+            #     obs_type="image",
+            #     frameskip=1,
+            #     repeat_action_probability=0.25 if sticky else 0.0,
+            #     full_action_space=(actions == "all"),
+            # )
+            self._env = gym.make(
+                f"ALE/{name}-v5",
+                obs_type="rgb",
                 frameskip=1,
                 repeat_action_probability=0.25 if sticky else 0.0,
-                full_action_space=(actions == "all"),
-            )
+                full_action_space=(actions == "all")
+                )
         assert self._env.unwrapped.get_action_meanings()[0] == "NOOP"
         shape = self._env.observation_space.shape
         self._buffer = [np.zeros(shape, np.uint8) for _ in range(2)]
         self._ale = self._env.unwrapped.ale
         self._last_lives = None
         self._done = True
-        self._step = 0
+        self._step = None
         self.reward_range = [-np.inf, np.inf]
 
     @property
@@ -94,7 +103,8 @@ class Atari:
         if len(action.shape) >= 1:
             action = np.argmax(action)
         for repeat in range(self._repeat):
-            _, reward, over, info = self._env.step(action)
+            _, reward, terminated, truncated, info = self._env.step(action)
+            over = terminated or truncated
             self._step += 1
             total += reward
             if repeat == self._repeat - 2:
@@ -117,21 +127,21 @@ class Atari:
             is_terminal=dead or over,
         )
 
-    def reset(self):
-        self._env.reset()
+    def reset(self, seed = None, options = None):
+        obs, info = self._env.reset(seed = seed, options = options)
         if self._noops:
             for _ in range(self._random.randint(self._noops)):
-                _, _, dead, _ = self._env.step(0)
-                if dead:
-                    self._env.reset()
+                _, _, terminated, truncated, _ = self._env.step(0)
+                if terminated or truncated:
+                    obs, info =self._env.reset(seed = seed, options = options)
         self._last_lives = self._ale.lives()
         self._screen(self._buffer[0])
         self._buffer[1].fill(0)
 
         self._done = False
         self._step = 0
-        obs, reward, is_terminal, _ = self._obs(0.0, is_first=True)
-        return obs
+        obs, reward, is_terminal, is_last, _ = self._obs(0.0, is_first=True)
+        return obs, info
 
     def _obs(self, reward, is_first=False, is_last=False, is_terminal=False):
         np.maximum(self._buffer[0], self._buffer[1], out=self._buffer[0])
@@ -152,12 +162,13 @@ class Atari:
         return (
             {"image": image, "is_terminal": is_terminal, "is_first": is_first},
             reward,
+            is_terminal and not is_last,
             is_last,
             {},
         )
 
     def _screen(self, array):
-        self._ale.getScreenRGB2(array)
+        self._ale.getScreenRGB(array)
 
     def close(self):
         return self._env.close()
