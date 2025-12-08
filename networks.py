@@ -129,6 +129,7 @@ class RSSM(nn.Module):
         # (batch, time, ch) -> (time, batch, ch)
         embed, action, is_first = swap(embed), swap(action), swap(is_first)
         # prev_state[0] means selecting posterior of return(posterior, prior) from obs_step
+        # imagination stuff here, since we apply this obs_step recurrently over time (result: these 2 lists)
         post, prior = tools.static_scan(
             lambda prev_state, prev_act, embed, is_first: self.obs_step(
                 prev_state[0], prev_act, embed, is_first
@@ -158,7 +159,7 @@ class RSSM(nn.Module):
             stoch = stoch.reshape(shape)
         return torch.cat([stoch, state["deter"]], -1)
 
-    def get_dist(self, state, dtype=None):
+    def get_dist(self, state, dtype=None): # return distribution object (e.g. for onehot vectors)
         if self._discrete:
             logit = state["logit"]
             dist = torchd.independent.Independent(
@@ -192,19 +193,20 @@ class RSSM(nn.Module):
                     val * (1.0 - is_first_r) + init_state[key] * is_first_r
                 )
 
-        prior = self.img_step(prev_state, prev_action)
+        prior = self.img_step(prev_state, prev_action)  # imagination, providing: ẑ, h (It predicts the next state without looking at the observation. (img_step runs the GRU and produces mean/std or logits for zₜ))
         x = torch.cat([prior["deter"], embed], -1)
         # (batch_size, prior_deter + embed) -> (batch_size, hidden)
-        x = self._obs_out_layers(x)
+        x = self._obs_out_layers(x)                     # z of our Encoder?
         # (batch_size, hidden) -> (batch_size, stoch, discrete_num)
-        stats = self._suff_stats_layer("obs", x)
+        stats = self._suff_stats_layer("obs", x)    # stats = if descrete (mean, std) else (logit)
         if sample:
-            stoch = self.get_dist(stats).sample()
+            stoch = self.get_dist(stats).sample()   
         else:
             stoch = self.get_dist(stats).mode()
-        post = {"stoch": stoch, "deter": prior["deter"], **stats}
-        return post, prior
+        post = {"stoch": stoch, "deter": prior["deter"], **stats}   # stoch: sampled z from posterior, deter: deterministic state h from prior
+        return post, prior  # {z, h}, {ẑ, h}
 
+    # somewhere here h will also be updated
     def img_step(self, prev_state, prev_action, sample=True):
         # (batch, stoch, discrete_num)
         prev_stoch = prev_state["stoch"]

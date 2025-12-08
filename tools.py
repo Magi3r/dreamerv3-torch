@@ -8,6 +8,7 @@ import re
 import time
 import random
 
+from dreamer import Dreamer
 import numpy as np
 
 import torch
@@ -123,9 +124,9 @@ class Logger:
         value = value.transpose(1, 4, 2, 0, 3).reshape((1, T, C, H, B * W))
         self._writer.add_video(name, value, step, 16)
 
-
+# TODO: do grab here for EM stuff :)
 def simulate(
-    agent,
+    agent: Dreamer,
     envs,
     cache,
     directory,
@@ -135,6 +136,7 @@ def simulate(
     steps=0,
     episodes=0,
     state=None,
+    return_uncertainty=False,
 ):
     # initialize or unpack simulation state
     if state is None:
@@ -146,6 +148,10 @@ def simulate(
         reward = [0] * len(envs)
     else:
         step, episode, done, length, obs, agent_state, reward = state
+
+    # we need:
+        # 1. susbtitution prediction
+        # 2. repeated past learning steps
     while (steps and step < steps) or (episodes and episode < episodes):
         # reset envs if necessary
         if done.any():
@@ -164,7 +170,25 @@ def simulate(
                 obs[index] = result
         # step agents
         obs = {k: np.stack([o[k] for o in obs]) for k in obs[0] if "log_" not in k}
-        action, agent_state = agent(obs, done, agent_state)
+        
+        # TODO: add 3rd element to return uncertainty?
+        action, agent_state, uncertainty = agent(obs, done, agent_state, return_uncertainty=return_uncertainty) # currently: agent_state = (latent, action); latent = {z, h}
+        # action = {"action": action, "logprob": logprob}
+        # print("steps:", step)
+        if episode > 3:
+            print("Print some shapes and so :)")
+            print(f"obs shape: {obs['image'].shape}")
+            print(f"action shape: {action['action'].shape}")
+            print(f"action logprob shape: {action['logprob'].shape}")
+            import time
+            if agent_state is not None:
+                print(f"agent_state stoch shape: {agent_state[0]['stoch'].shape}, deter shape: {agent_state[0]['deter'].shape}")
+                torch.set_printoptions(threshold=10_000)
+                print(f"agent_state stoch: {agent_state[0]['stoch']}")
+                print(f"agent_state deter: {agent_state[0]['deter']}")
+                # time.sleep(10)
+            # TODO: episodic_memory.add(key: (h_t, z_t, a_t), value: (z_{t'}, a_{t'}), uncertainty)
+
         if isinstance(action, dict):
             action = [
                 {k: np.array(action[k][i].detach().cpu()) for k in action}

@@ -55,7 +55,7 @@ class Dreamer(nn.Module):
             plan2explore=lambda: expl.Plan2Explore(config, self._wm, reward),
         )[config.expl_behavior]().to(self._config.device)
 
-    def __call__(self, obs, reset, state=None, training=True):
+    def __call__(self, obs, reset, state=None, training=True, return_uncertainty:bool=False):
         step = self._step
         if training:
             steps = (
@@ -77,11 +77,17 @@ class Dreamer(nn.Module):
                 self._logger.write(fps=True)
 
         policy_output, state = self._policy(obs, state, training)
+        
+        # TODO: uncertainty calculation??
+        uncertainty = None
+
+        if return_uncertainty:
+            pass
 
         if training:
             self._step += len(reset)
             self._logger.step = self._config.action_repeat * self._step
-        return policy_output, state
+        return policy_output, state, uncertainty
 
     def _policy(self, obs, state, training):
         if state is None:
@@ -89,8 +95,9 @@ class Dreamer(nn.Module):
         else:
             latent, action = state
         obs = self._wm.preprocess(obs)
-        embed = self._wm.encoder(obs)
-        latent, _ = self._wm.dynamics.obs_step(latent, action, embed, obs["is_first"])
+        embed = self._wm.encoder(obs) #  not z until now, h missing (comes in obs_step)
+        latent, _ = self._wm.dynamics.obs_step(latent, action, embed, obs["is_first"]) # dynamics -> RSSM (not just the Dyn. Pred.!); {z, h}, {ẑ, h}
+        # latent: dict -> stoch: z, det: h
         if self._config.eval_state_mean:
             latent["stoch"] = latent["mean"]
         feat = self._wm.dynamics.get_feat(latent)
@@ -270,10 +277,10 @@ def main(config):
                 1,
             )
 
-        def random_agent(o, d, s):
+        def random_agent(o, d, s, return_uncertainty=False):
             action = random_actor.sample()
             logprob = random_actor.log_prob(action)
-            return {"action": action, "logprob": logprob}, None
+            return {"action": action, "logprob": logprob}, None, None
 
         state = tools.simulate(
             random_agent,
@@ -318,6 +325,7 @@ def main(config):
                 logger,
                 is_eval=True,
                 episodes=config.eval_episode_num,
+                return_uncertainty=False,
             )
             if config.video_pred_log:
                 video_pred = agent._wm.video_pred(next(eval_dataset))
@@ -332,6 +340,7 @@ def main(config):
             limit=config.dataset_size,
             steps=config.eval_every,
             state=state,
+            return_uncertainty=True,
         )
         items_to_save = {
             "agent_state_dict": agent.state_dict(),
