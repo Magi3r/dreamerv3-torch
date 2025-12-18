@@ -175,18 +175,18 @@ def simulate(
         action, agent_state, uncertainty = agent(obs, done, agent_state, return_uncertainty=return_uncertainty) # currently: agent_state = (latent, action); latent = {z, h}
         # action = {"action": action, "logprob": logprob}
         # print("steps:", step)
-        if episode > 3:
-            print("Print some shapes and so :)")
-            print(f"obs shape: {obs['image'].shape}")
-            print(f"action shape: {action['action'].shape}")
-            print(f"action logprob shape: {action['logprob'].shape}")
-            import time
-            if agent_state is not None:
-                print(f"agent_state stoch shape: {agent_state[0]['stoch'].shape}, deter shape: {agent_state[0]['deter'].shape}")
-                torch.set_printoptions(threshold=10_000)
-                print(f"agent_state stoch: {agent_state[0]['stoch']}")
-                print(f"agent_state deter: {agent_state[0]['deter']}")
-                # time.sleep(10)
+        # if episode > 3:
+            # print("Print some shapes and so :)")
+            # print(f"obs shape: {obs['image'].shape}")
+            # print(f"action shape: {action['action'].shape}")
+            # print(f"action logprob shape: {action['logprob'].shape}")
+            # import time
+            # if agent_state is not None:
+            #     print(f"agent_state stoch shape: {agent_state[0]['stoch'].shape}, deter shape: {agent_state[0]['deter'].shape}")
+            #     torch.set_printoptions(threshold=10_000)
+            #     print(f"agent_state stoch: {agent_state[0]['stoch']}")
+            #     print(f"agent_state deter: {agent_state[0]['deter']}")
+            #     # time.sleep(10)
             # TODO: episodic_memory.add(key: (h_t, z_t, a_t), value: (z_{t'}, a_{t'}), uncertainty)
 
         if isinstance(action, dict):

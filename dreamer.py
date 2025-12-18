@@ -20,7 +20,9 @@ from parallel import Parallel, Damy
 import torch
 from torch import nn
 from torch import distributions as torchd
+import time
 
+from episodic_memory import EpisodicMemory as EM
 
 to_np = lambda x: x.detach().cpu().numpy()
 
@@ -141,12 +143,13 @@ class Dreamer(nn.Module):
 
 
 def count_steps(folder):
+    # print(f"\n!!!COUNTSTEPS: {folder} -> {sum(int(str(n).split("-")[-1][:-4]) - 1 for n in folder.glob("*.npz"))}")
     return sum(int(str(n).split("-")[-1][:-4]) - 1 for n in folder.glob("*.npz"))
 
 
 def make_dataset(episodes, config):
     generator = tools.sample_episodes(episodes, config.batch_length)
-    dataset = tools.from_generator(generator, config.batch_size)
+    dataset = tools.from_generator(generator, config.batch_size)    # <generator object from_generator at 0x7f2c9c1b6ac0>
     return dataset
 
 
@@ -295,6 +298,9 @@ def main(config):
         print(f"Logger: ({logger.step} steps).")
 
     print("Simulate agent.")
+    eps_sample = list(train_eps.values())[0]
+    print(f"Create datasets: \n     train_eps.type() = {type(train_eps)}\n     train_eps.keys() = {list(train_eps.keys())}\n    \
+          len(train_eps.values()[0]) = {len(eps_sample)} \n   type(train_eps.values()[0]) = {type(eps_sample)}")
     train_dataset = make_dataset(train_eps, config)
     eval_dataset = make_dataset(eval_eps, config)
     agent = Dreamer(
@@ -311,11 +317,25 @@ def main(config):
         tools.recursively_load_optim_state_dict(agent, checkpoint["optims_state_dict"])
         agent._should_pretrain._once = False
 
+    # TODO: create EM here
+    print("~~Create Episodic Memory here~~")
+    # episodic_memory: EM = EM(trajectory_length = config.trajectory_length, 
+    #                               uncertainty_threshold = config.uncertainty_threshold, 
+    #                               z_shape = agent.z_shape, h_shape = agent.h_shape, 
+    #                               action_shape=train_envs[0].action_space,
+    #                               k = config.em_k)
+    # em_dataset =  tools.from_generator(episodic_memory.get_data_generator(batch_length = config.em_batch_size, seed = 42))
+
     # make sure eval will be executed once after config.steps
+    print(f"agent._step: {agent._step} config.steps: {config.steps} config.eval_every: {config.eval_every}")
+    print(f"Condition was: while agent._step < config.steps + config.eval_every = {agent._step < config.steps + config.eval_every}")
+    print(f"if config.eval_episode_num > 0: eval_episode_num = {config.eval_episode_num}")
     while agent._step < config.steps + config.eval_every:
+        print(f"agent._step: {agent._step} config.steps: {config.steps} config.eval_every: {config.eval_every}")
+        time.sleep(1)
         logger.write()
         if config.eval_episode_num > 0:
-            print("Start evaluation.")
+            print(f"Start evaluation. (takes: {config.eval_episode_num} episodes)")
             eval_policy = functools.partial(agent, training=False)
             tools.simulate(
                 eval_policy,
@@ -330,7 +350,7 @@ def main(config):
             if config.video_pred_log:
                 video_pred = agent._wm.video_pred(next(eval_dataset))
                 logger.video("eval_openl", to_np(video_pred))
-        print("Start training.")
+        print(f"Start training. (takes: {config.eval_every} steps)")
         state = tools.simulate(
             agent,
             train_envs,
