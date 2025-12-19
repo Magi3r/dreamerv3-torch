@@ -9,6 +9,7 @@ import time
 import random
 
 from dreamer import Dreamer
+from episodic_memory import EpisodicMemory as EM
 import numpy as np
 
 import torch
@@ -137,6 +138,7 @@ def simulate(
     episodes=0,
     state=None,
     return_uncertainty=False,
+    episodic_memory:EM|None=None, 
 ):
     # initialize or unpack simulation state
     if state is None:
@@ -149,6 +151,8 @@ def simulate(
     else:
         step, episode, done, length, obs, agent_state, reward = state
 
+    uncertainty: float = 0.0
+    
     # we need:
         # 1. susbtitution prediction
         # 2. repeated past learning steps
@@ -172,7 +176,10 @@ def simulate(
         obs = {k: np.stack([o[k] for o in obs]) for k in obs[0] if "log_" not in k}
         
         # TODO: add 3rd element to return uncertainty?
+        prev_agent_state = agent_state # .copy()?
+        # prev_uncertainty = uncertainty
         action, agent_state, uncertainty = agent(obs, done, agent_state, return_uncertainty=return_uncertainty) # currently: agent_state = (latent, action); latent = {z, h}
+        assert(agent_state != prev_agent_state)
         # action = {"action": action, "logprob": logprob}
         # print("steps:", step)
         # if episode > 3:
@@ -187,7 +194,12 @@ def simulate(
             #     print(f"agent_state stoch: {agent_state[0]['stoch']}")
             #     print(f"agent_state deter: {agent_state[0]['deter']}")
             #     # time.sleep(10)
-            # TODO: episodic_memory.add(key: (h_t, z_t, a_t), value: (z_{t'}, a_{t'}), uncertainty)
+        # TODO:
+        if episodic_memory is not None:
+            # if done:
+            episodic_memory.step(agent_state, action, uncertainty, done) # key = (h_t, z_t, a_t), value = (z_{t'}, a_{t'})
+            # else:
+            #     episodic_memory.step(prev_agent_state, action, uncertainty, done) # key = (h_t, z_t, a_t), value = (z_{t'}, a_{t'})
 
         if isinstance(action, dict):
             action = [

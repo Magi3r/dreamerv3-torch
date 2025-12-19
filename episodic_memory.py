@@ -6,7 +6,7 @@ class EpisodicMemory(Dataset):
     """
     Episodic Memory object for trajectory management.
     """
-    def __init__(self, trajectory_length: int, uncertainty_threshold: float, z_shape, h_shape, action_shape, k_nn: int = 5):
+    def __init__(self, trajectory_length: int, uncertainty_threshold: float, z_shape, action_shape, k_nn: int = 5):
         """
         Docstring for __init__
         
@@ -27,7 +27,9 @@ class EpisodicMemory(Dataset):
         self.trajectories: dict = {} # key: (h_t, z_t, a_t), value: (TrajectoryMemory, offset, uncertainty)
 
         self.current_trajectory: TrajectoryObject | None = None
-    
+
+        self.prev_state = None
+
     def __len__(self):
         return len(self.trajectories)
     
@@ -134,29 +136,59 @@ class EpisodicMemory(Dataset):
         # key: (h_t, z_t, a_t)
         # value: (z_{t'}, a_{t'})
         # uncertainty: float
-        trajectory = self.current_trajectory if self.current_trajectory else TrajectoryObject(self.trajectory_length)
-        
+        trajectory = self.current_trajectory if self.current_trajectory else TrajectoryObject(self.trajectory_length) # z_shape, action_shape
+
         trajectory.add(value, is_new_trajectory=True)
+
+
+    def create_traj(self, key: tuple, uncertainty: float):
+        """ create new trajectory 
+            create an empty trajectory, that is accessible by a key"""
+        # key: (h_t, z_t, a_t)
+        # uncertainty: float
+        trajectory = self.current_trajectory if self.current_trajectory else TrajectoryObject(self.trajectory_length) # z_shape, action_shape
+
+        # self.trajectories[key] = (trajectory, trajectory.last_idx(), uncertainty)
+        self.trajectories[key] = (trajectory, trajectory.new_traj(), uncertainty)
     
     def fill_traj(self, value):
         """ Add entry to existing trajectory """
+        # value: (z_{t'}, a_{t'})
         assert(self.current_trajectory is not None)
         self.current_trajectory.add(value, is_new_trajectory=False)
 
     def step(self, state: dict, action, uncertainty: float, done:bool=False):
+        """ Step through the memory with new transition """
+        
+        # add new trajecory
         if uncertainty > self.uncertainty_threshold:
-            # add new trajecory
-            z = state["stoch"]
-            h = state["deter"]
-            value = (z, h) # (z_t, h_t)
-            key = (z, h, action) # (z_t, h_t, a_t) 
-            self.add(key, value, uncertainty)
+            assert(self.prev_state is not None)
+            # value = (z, h)          # (z_t, h_t)
+            key = (self.prev_state["deter"], self.prev_state["stoch"], action)    # (z_t, h_t, a_t) 
+
+            self.create_traj(key, uncertainty)
+    
+            # add this single transition as trajectory
+            if done:
+                self.fill_traj((state["stoch"], None))
+                self.current_trajectory = None
+                self.prev_state = None
+
+        # just fill trajectory space
         elif self.current_trajectory is not None and self.current_trajectory.free_space > 0:
-            # just fill trajectory space
-            value = (state["stoch"], state["deter"])# (z_t, h_t)
-            self.fill_traj(value)
+            assert(self.prev_state is not None)
+            
+            self.fill_traj((self.prev_state["stoch"], action))
+
+            if done and self.current_trajectory.free_space > 0:
+                self.fill_traj((state["stoch"], None))
+                self.current_trajectory = None
+                self.prev_state = None
+
         else:
             self.current_trajectory = None
+            
+        self.prev_state = state #.copy()?
 
     def flatten_key(self, key):
         """Convert (z, h, a) tensors into one numpy vector."""
@@ -167,7 +199,10 @@ class EpisodicMemory(Dataset):
         return np.concatenate([z, h, a], axis=0)
     
     def __str__(self):
-        return f"EM| Num trajectories: {len(self.trajectories)}| Trajectory length: {self.trajectory_length}| Uncertainty thr.: {self.uncertainty_threshold}\n          | Current trajectory: {self.current_trajectory}"
+        return f"EM| Num trajectories: {len(self.trajectories)}\
+            | Trajectory length: {self.trajectory_length}\
+                | Uncertainty thr.: {self.uncertainty_threshold}\
+                    \n          | Current trajectory: {self.current_trajectory}"
 
     def kNN(self, key, k: int = 1):
         """Return the k-nearest neighbors among stored trajectory keys."""
@@ -225,17 +260,53 @@ class TrajectoryObject:
         self.memory: np.array = np.zeros((trajectory_length,))  # TODO: add size of tuple (z_t', a_t')
         """"The actual trajectories."""
 
-    def add(self, value: tuple, is_new_trajectory: bool):
+        self.trajectory_num_map : np.array = np.zeros((10,), dtype=int) # 10 is test value for now
+        """"The actual trajectory starting index."""
+        self.num_trajectories : int = 0
+        """"Trajectory counter."""
+
+    def new_traj(self):
+        """"The new trajectory number."""
+        nr_idx = self.num_trajectories
+        self.num_trajectories += 1
+
+        if self.trajectory_num_map.shape[0] <= self.num_trajectories + 1:
+            self.trajectory_num_map = np.concatenate(
+                (self.trajectory_num_map, np.zeros((10,), dtype=int)),
+                axis=0
+            )
+
+        self.memory = np.concat(self.memory, np.zeros(self.trajectory_length-self.free_space,)) # possible if lenght-freespace = 0 ??? # TODO: add size of tuple (z_t', a_t')
+        self.free_space = self.trajectory_length
+        self.trajectory_num_map[nr_idx] = self.last_idx()
+
+        return nr_idx
+
+    def del_traj(self, traj_nr):
+        """ Delete a trajectory by its number """
+        start_idx = self.trajectory_num_map[traj_nr-1]+self.trajectory_length if traj_nr-1 >=0 else 0
+        end_idx = self.trajectory_num_map[traj_nr+1] if self.trajectory_num_map.shape[0]-1 < traj_nr else self.memory.shape[0]-1
+
+
+        to_delete = (end_idx - start_idx)
+        if to_delete > 0:
+            self.memory = np.concatenate([self.memory[:start_idx], self.memory[end_idx:]], axis = 0) #+1-1*1/1????
+
+            # decrement following trajectory indices by length of deleted trajectory
+            if traj_nr + 1 < self.num_trajectories:
+                temp = np.zeros_like(self.trajectory_num_map)
+                temp[traj_nr+1:] = (end_idx - start_idx)
+
+                self.trajectory_num_map -= temp
+        else:
+            self.trajectory_num_map[traj_nr] = self.trajectory_num_map[traj_nr+1]
+
+    def add(self, value: tuple):
         """
         Add a value into the trajectory. Aut
                 
         :param value: The value to add.
-        :param is_new_trajectory: Whether a new trajectory starts here.
-        :type is_new_trajectory: bool
         """
-        if is_new_trajectory:
-            self.memory = np.concat(self.memory, np.zeros(self.trajectory_length-self.free_space,))
-            self.free_space = self.trajectory_length
         self.memory[-self.free_space]=value # TODO: add tuple (z_t', a_t')
         self.free_space -= 1
 
@@ -244,13 +315,6 @@ class TrajectoryObject:
 
     def __str__(self):
         return f"TrajectoryObj| Free space: {len(self.free_space)}| Trajectory length: {self.trajectory_length}"
-
-
-
-
-
-
-import numpy as np
 
 class HybridKNN:
     def __init__(self, latent_tuples, w_discrete=1.0, w_cont=1.0, include_a=True):
