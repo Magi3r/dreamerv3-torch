@@ -29,6 +29,13 @@ defaults:
   prefill: 2500
   reward_EMA: True
 
+  # Episodic Memory ~ TODO: placeholder numbers for now!
+  trajectory_length: 20
+  em_capacity: 1000
+  em_k: 5
+  em_uncertainty_threshold: 0.9
+  em_batch_size: 16
+
   # Model
   dyn_hidden: 512
   dyn_deter: 512

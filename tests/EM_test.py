@@ -78,6 +78,8 @@ def test_episodic_memory_basic():
 
     print("✅ EpisodicMemory basic test passed.")
 
+    return True
+
 def test_multiple_trajectories_two_object():
     print("\nRunning multiple-trajectory test...")
 
@@ -178,7 +180,9 @@ def test_multiple_trajectories_two_object():
 
     print("✅ Multiple trajectories stored in one object correctly.")
 
-def test_multiple_trajectories_single_object_deletion():
+    return True
+
+def test_multiple_trajectories_deletion():
     print("\nRunning multiple-trajectory test + deletion...")
 
     traj_len = 4
@@ -208,12 +212,16 @@ def test_multiple_trajectories_single_object_deletion():
     mem.step(make_state(2.0), action, uncertainty=0.9)
     mem.step(make_state(3.0), action, uncertainty=0.1) # ! this will not be added here
 
-    assert len(mem.trajectories) == 2
+    assert len(mem.trajectories) == 2   # traj dict should contain 2 entries now (with same traj obj)
 
     trajs = list(mem.trajectories.values())
     stored_traj, offset, unc = trajs[0]
+    current_free_space = stored_traj.free_space
+
+    assert current_free_space == (traj_len-1)
+
     print("Stored trajectory memory:", stored_traj.memory)
-    print("Free space:", stored_traj.free_space)
+    print("Free space:", current_free_space)
     # print("Offset:", offset)
     # print("Uncertainty:", unc)
 
@@ -222,15 +230,23 @@ def test_multiple_trajectories_single_object_deletion():
 
     first_key = list(mem.trajectories.keys())[0]
     mem.remove_traj(first_key)
-    print("removes first traj with value: ", mem.trajectories[first_key][0])
+
+    trajs = list(mem.trajectories.values())
+    stored_traj, offset, unc = trajs[0]
+    current_free_space = stored_traj.free_space
+    print(traj_obj1)
+
+    assert len(mem.trajectories) == 1
+    print("after delete stored_traj.memory: ", stored_traj.memory)
 
     mem.step(make_state(4.0), action, uncertainty=0.9)
+
+    assert len(mem.trajectories) == 2
 
     traj_obj1, idx1, _ = list(mem.trajectories.values())[0]
     print(traj_obj1)
 
-    print("\n\nNow insert 3 new trajs with some gabs to test deletion...\n")
-
+    print("\n\n~~Now insert 3 new trajs with some gabs to test deletion...~~\n")
     mem = EM(
         trajectory_length=traj_len,
         uncertainty_threshold=uncertainty_threshold,
@@ -240,95 +256,95 @@ def test_multiple_trajectories_single_object_deletion():
     # ---- trajectory 1 (object 1) ----
     mem.step(make_state(0.0), action, uncertainty=0.1)  # start
     mem.step(make_state(1.0), action, uncertainty=0.9)
-
-    assert traj_obj1.free_space==0
-    assert traj_obj1 is None
-    assert len(mem.trajectories) == 0
-
-    return
-    traj_obj_1, idx_1, _ = list(mem.trajectories.values())[0]
-    assert idx_1 == 0
-    assert traj_obj_1.num_trajectories == 1
-
-    # ---- trajectory 1 (object 2) ----
-    mem.step(make_state(3.0), action, uncertainty=0.1)  # start new
-    print("LEN ALL TRAJ :", len(mem.trajectories))    
-
-    mem.step(make_state(4.0), action, uncertainty=0.9)  
-    trajs = list(mem.trajectories.values())[1][0]
-    print("LEN ALL TRAJ:", len(mem.trajectories))
-    print("Free space 1:", trajs.free_space)
-
+    mem.step(make_state(2.0), action, uncertainty=0.1)
+    mem.step(make_state(3.0), action, uncertainty=0.1)
+    mem.step(make_state(4.0), action, uncertainty=0.9)
     mem.step(make_state(5.0), action, uncertainty=0.1)
-    trajs = list(mem.trajectories.values())[1][0]
-    print("LEN ALL TRAJ:", len(mem.trajectories))
-    print("Free space 2:", trajs.free_space)
+    mem.step(make_state(6.0), action, uncertainty=0.1)
+    mem.step(make_state(7.0), action, uncertainty=0.1, done=True)
 
-    # trajs = list(mem.trajectories.values())[0][0]
-    # print("Free space original traj:", trajs.free_space)
+    mem.step(make_state(8.0), action, uncertainty=0.1)  # start
+    mem.step(make_state(9.0), action, uncertainty=0.9)
+    mem.step(make_state(10.0), action, uncertainty=0.1)
 
-    mem.step(make_state(6.0), action, uncertainty=0.9)  
-    trajs = list(mem.trajectories.values())[1][0]
-    print("LEN ALL TRAJ:", len(mem.trajectories))
-    print("Free space 3:", trajs.free_space)
+    print("mem.trajectories: ", mem.trajectories)
 
-    mem.step(make_state(7.0), action, uncertainty=0.1)
-    trajs = list(mem.trajectories.values())[1][0]
-    print("LEN ALL TRAJ:", len(mem.trajectories))
-    print("Free space 4:", trajs.free_space)
+    traj_obj1, idx1, _ = list(mem.trajectories.values())[0]
+    traj_obj2, idx2, _ = list(mem.trajectories.values())[1]
+    traj_obj3, idx3, _ = list(mem.trajectories.values())[2]
+    assert traj_obj1.free_space == (traj_len-4)
+    assert traj_obj1 == traj_obj2
+    assert traj_obj1 is not traj_obj3
 
-    mem.step(make_state(8.0), action, uncertainty=0.1, done=True)
-    trajs = list(mem.trajectories.values())[1][0]
-    print("LEN ALL TRAJ:", len(mem.trajectories))
-    print("Free space 5:", trajs.free_space)
+    second_key = list(mem.trajectories.keys())[1]
+    mem.remove_traj(second_key)
+    assert len(mem.trajectories) == 2
 
-    trajs = list(mem.trajectories.values())
-    trajs_obs = list(mem.trajectories.keys())
-    i=0
-    for stored_traj, idx, unc in trajs:
-        print(f"Entry:{i} Key:", trajs_obs[i])
-        print("Stored trajectory memory:", stored_traj.memory)
-        print("Free space:", stored_traj.free_space)
-        print("Index:", idx)
-        print("Uncertainty:", unc)
-        i += 1
-        # print("\n\n")
-        # print(stored_traj)
-        # print("\n\n")
+    traj_obj1, idx1, _ = list(mem.trajectories.values())[0]
+    traj_obj2, idx2, _ = list(mem.trajectories.values())[1]
+    assert traj_obj1 is not traj_obj2
 
-    assert len(mem.trajectories) == 3
+    print("✅ Multiple deletions successfully implemented.")
+    return True
 
-    traj_obj_2, idx_2, _ = list(mem.trajectories.values())[2]
-    assert traj_obj_2 is not traj_obj_1          # SAME object
-    assert traj_obj_2.traj_num_to_offset[1] == 2
-    assert traj_obj_2.num_trajectories == 2
+def test_knn_simple():
+    print("\nRunning simple kNN test...")
 
-    # ---- inspect memory layout ----
-    mem_array = traj_obj_2.memory
+    traj_len = 4
+    uncertainty_threshold = 0.5
 
-    print("Full memory:", mem_array)
-    print("Trajectory start indices:", traj_obj_2.traj_num_to_offset[:2])
+    mem = EM(
+        trajectory_length=traj_len,
+        uncertainty_threshold=uncertainty_threshold,
+        z_shape=(2,),
+        action_shape=(1,),
+    )
 
-    # Trajectory 1 occupies indices [0, 1, 2]
-    t1_start = traj_obj_2.traj_num_to_offset[0]
-    t2_start = traj_obj_2.traj_num_to_offset[1]
+    def make_state(v):
+        return {
+            "deter": torch.tensor([42, v]),
+            "stoch": torch.tensor([v, v]),
+        }
 
-    assert t1_start == 0
-    assert t2_start == 2
+    action = torch.tensor([1.0])
 
-    # Values should be tuples
-    assert mem_array[0] is not None
-    assert isinstance(mem_array[0], tuple)
+    # ---- trajectory 1 (object 1) ----
+    mem.step(make_state(0.0), action, uncertainty=0.1)  # start
+    mem.step(make_state(1.0), action, uncertainty=0.9)  # traj1
+    mem.step(make_state(2.0), action, uncertainty=0.9)  # traj2
+    mem.step(make_state(3.0), action, uncertainty=0.1)
+    mem.step(make_state(4.0), action, uncertainty=0.9)  # traj3
+    mem.step(make_state(5.0), action, uncertainty=0.1)
+    mem.step(make_state(6.0), action, uncertainty=0.1)
+    mem.step(make_state(7.0), action, uncertainty=0.1, done=True)
 
-    print("✅ Multiple trajectories stored in one object correctly.")
+    # ---- query kNN ----
+    second_key = list(mem.trajectories.keys())[1]
+    traj_obj, idx, _ = mem.trajectories[second_key]
+
+    neighbors = mem.kNN(second_key, k=2)
+    print("second_key:", mem.trajectories[second_key])
+    print("Neighbors found:", neighbors)
+
+    assert len(neighbors) == 2
+    assert mem.trajectories[second_key] == neighbors[0] # closest neighbor should be itself
+    assert mem.trajectories[second_key] in neighbors
+
+    print("✅ Simple kNN test passed.")
+    return True
 
 if __name__ == "__main__":
-    # test_episodic_memory_basic()
+    res = []
 
-    # test_multiple_trajectories_two_object()
+    res.append(test_episodic_memory_basic())
+    res.append(test_multiple_trajectories_two_object())
+    res.append(test_multiple_trajectories_deletion())
+    res.append(test_knn_simple())
 
-    test_multiple_trajectories_single_object_deletion()
-
+    if all(res):
+        print("\n🎊🎊🎊 All EpisodicMemory tests passed! 🎊🎊🎊")
+    else:
+        print("\nSome EpisodicMemory tests failed.")
 
 
 # import numpy as np
