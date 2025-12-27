@@ -284,9 +284,6 @@ class TrajectoryObject:
         self.trajectory_memory: dict = {}
         self.current_trajectory_id: int = 0
 
-        # self.memory: np.array = np.empty((trajectory_length,), dtype=object)  # TODO: add size of tuple (z_t', a_t')
-        # self.traj_num_to_offset : np.array = np.zeros((10,), dtype=int) # 10 is test value for now
-
     def new_traj(self):
         nr_idx = self.num_trajectories
 
@@ -298,7 +295,10 @@ class TrajectoryObject:
         return nr_idx
 
     def del_traj(self, traj_nr):
-        del(self.trajectory_memory[traj_nr])
+        # The fist version should be minimally faster, but we leave things up to the garbage colelctor, which might not be such a good idea.
+        
+        self.trajectory_memory[traj_nr] = None
+        # del(self.trajectory_memory[traj_nr])
 
     def add(self, value: tuple) -> int:
         self.trajectory_memory[self.current_trajectory_id][-self.free_space] = value

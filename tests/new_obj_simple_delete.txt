@@ -1,0 +1,84 @@
+Filename: /home/alex/Documents/University/Sem9/MP/dreamerv3-torch/./tests/benchmark.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    36    562.8 MiB    562.8 MiB           1   @profile
+    37                                         def benchmark_em(
+    38                                             steps=100_000,
+    39                                             trajectory_length=10,
+    40                                             uncertainty_threshold=0.8,
+    41                                             z_dim=32,
+    42                                             h_dim=32,
+    43                                             a_dim=8,
+    44                                             done_prob=0.01,
+    45                                         ):
+    46    562.8 MiB      0.0 MiB           2       em = EpisodicMemory(
+    47    562.8 MiB      0.0 MiB           1           trajectory_length=trajectory_length,
+    48    562.8 MiB      0.0 MiB           1           uncertainty_threshold=uncertainty_threshold,
+    49    562.8 MiB      0.0 MiB           1           z_shape=(z_dim,),
+    50    562.8 MiB      0.0 MiB           1           action_shape=(a_dim,),
+    51    562.8 MiB      0.0 MiB           1           k_nn=5,
+    52                                             )
+    53                                         
+    54    562.8 MiB      0.0 MiB           1       stats = defaultdict(list)
+    55                                         
+    56    562.8 MiB      0.0 MiB           1       start_time = time.perf_counter()
+    57                                         
+    58   1586.2 MiB     17.4 MiB      500001       for t in tqdm(range(steps), desc="EM step operations"):
+    59   1586.2 MiB    521.7 MiB      500000           state = fake_state(z_dim, h_dim)
+    60   1586.2 MiB    211.8 MiB      500000           action = fake_action(a_dim)
+    61   1586.2 MiB      0.5 MiB      500000           uncertainty = fake_uncertainty()
+    62   1586.2 MiB     13.2 MiB      500000           done = np.random.rand() < done_prob
+    63                                         
+    64   1586.2 MiB      0.0 MiB      500000           t0 = time.perf_counter()
+    65   1586.2 MiB    223.0 MiB      500000           em.step(state, action, uncertainty, done)
+    66   1586.2 MiB     35.9 MiB      500000           stats["step_time"].append(time.perf_counter() - t0)
+    67                                         
+    68   1586.2 MiB      0.0 MiB           1       total_time = time.perf_counter() - start_time
+    69                                         
+    70   1586.2 MiB      0.0 MiB           1       stats["total_time"] = total_time
+    71   1586.2 MiB      0.0 MiB           1       stats["steps"] = steps
+    72   1586.2 MiB      0.0 MiB           1       stats["steps_per_sec"] = steps / total_time
+    73   1586.2 MiB      0.0 MiB           1       stats["num_trajectories"] = len(em.trajectories)
+    74                                         
+    75   1586.2 MiB      0.0 MiB           1       return em, stats
+
+
+=== EM Benchmark ===
+Steps: 500000
+Total time: 310.49s
+Steps/sec: 1610
+Stored trajectories: 495103
+Filename: /home/alex/Documents/University/Sem9/MP/dreamerv3-torch/./tests/benchmark.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    77   1586.3 MiB   1586.3 MiB           1   @profile
+    78                                         def benchmark_deletion(em: EpisodicMemory):
+    79   1586.3 MiB      0.0 MiB           1       if len(em.trajectories) == 0:
+    80                                                 return {"deletions": 0}
+    81                                         
+    82   1590.0 MiB      3.8 MiB           1       keys = list(em.trajectories.keys())
+    83   1590.0 MiB      0.0 MiB           1       delete_times = []
+    84   1590.0 MiB      0.0 MiB           1       np.random.shuffle(keys)
+    85                                             
+    86   1594.5 MiB      2.6 MiB      247552       for key in tqdm(keys[: len(keys)//2], desc="EM delete operations"):
+    87   1594.5 MiB      0.0 MiB      247551           t0 = time.perf_counter()
+    88   1594.5 MiB      0.0 MiB      247551           em.remove_traj(key)
+    89   1594.5 MiB      1.9 MiB      247551           delete_times.append(time.perf_counter() - t0)
+    90                                         
+    91   1594.5 MiB      0.0 MiB           1       return {
+    92   1594.5 MiB      0.0 MiB           1           "deletions": len(delete_times),
+    93   1594.5 MiB      0.0 MiB           1           "avg_delete_time": np.mean(delete_times),
+    94   1594.5 MiB      0.0 MiB           1           "max_delete_time": np.max(delete_times),
+    95                                             }
+
+
+
+=== Deletion Benchmark ===
+deletions: 247551
+avg_delete_time: 0.00014985561344826976
+max_delete_time: 0.000547698000445962
+
+=== Validation ===
+No invariant violations detected.

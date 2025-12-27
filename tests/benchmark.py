@@ -143,7 +143,7 @@ def benchmark_knn(
     
 
 if __name__ == "__main__":
-    em, stats = benchmark_em(steps=50_000, uncertainty_threshold=0.0)
+    em, stats = benchmark_em(steps=500_000, uncertainty_threshold=0.0)
 
     print("=== EM Benchmark ===")
     print(f"Steps: {stats['steps']}")
