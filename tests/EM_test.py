@@ -69,7 +69,7 @@ def test_episodic_memory_basic():
     trajs = list(mem.trajectories.values())
     stored_traj, offset, unc = trajs[0]
 
-    print("Stored trajectory memory:", stored_traj.memory)
+    print("Stored trajectory memory:", stored_traj.memory())
     print("Free space:", stored_traj.free_space)
     print("Offset:", offset)
     print("Uncertainty:", unc)
@@ -110,7 +110,7 @@ def test_multiple_trajectories_two_object():
 
     trajs = list(mem.trajectories.values())
     stored_traj, offset, unc = trajs[0]
-    print("Stored trajectory memory:", stored_traj.memory)
+    print("Stored trajectory memory:", stored_traj.memory())
     print("Free space:", stored_traj.free_space)
     print("Offset:", offset)
     print("Uncertainty:", unc)
@@ -148,9 +148,8 @@ def test_multiple_trajectories_two_object():
     i=0
     for stored_traj, idx, unc in trajs:
         print(f"Entry:{i} Key:", trajs_obs[i])
-        print("Stored trajectory memory:", stored_traj.memory)
+        print("Stored trajectory memory:", stored_traj.memory())
         print("Free space:", stored_traj.free_space)
-        print(f"Index: {idx} -> offset: {stored_traj.traj_num_to_offset[idx]}")
         print("Uncertainty:", unc)
         i += 1
 
@@ -158,21 +157,14 @@ def test_multiple_trajectories_two_object():
 
     traj_obj_2, idx_2, _ = list(mem.trajectories.values())[2]
     assert traj_obj_2 is not traj_obj_1          # SAME object
-    assert traj_obj_2.traj_num_to_offset[1] == 2
     assert traj_obj_2.num_trajectories == 2
 
     # ---- inspect memory layout ----
-    mem_array = traj_obj_2.memory
+    mem_array = traj_obj_2.memory()
 
     print("Full memory:", mem_array)
-    print("Trajectory start indices:", traj_obj_2.traj_num_to_offset[:2])
 
     # Trajectory 1 occupies indices [0, 1, 2]
-    t1_start = traj_obj_2.traj_num_to_offset[0]
-    t2_start = traj_obj_2.traj_num_to_offset[1]
-
-    assert t1_start == 0
-    assert t2_start == 2
 
     # Values should be tuples
     assert mem_array[0] is not None
@@ -220,7 +212,7 @@ def test_multiple_trajectories_deletion():
 
     assert current_free_space == (traj_len-1)
 
-    print("Stored trajectory memory:", stored_traj.memory)
+    print("Stored trajectory memory:", stored_traj.memory())
     print("Free space:", current_free_space)
     # print("Offset:", offset)
     # print("Uncertainty:", unc)
@@ -237,7 +229,7 @@ def test_multiple_trajectories_deletion():
     print(traj_obj1)
 
     assert len(mem.trajectories) == 1
-    print("after delete stored_traj.memory: ", stored_traj.memory)
+    print("after delete stored_traj.memory(): ", stored_traj.memory())
 
     mem.step(make_state(4.0), action, uncertainty=0.9)
 

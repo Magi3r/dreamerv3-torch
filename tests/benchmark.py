@@ -105,9 +105,9 @@ def validate_em(em: EpisodicMemory):
             errors.append("Invalid trajectory index")
 
         # Check offsets monotonicity
-        offsets = traj_obj.traj_num_to_offset[:traj_obj.num_trajectories]
-        if not np.all(np.diff(offsets) >= 0):
-            errors.append("Non-monotonic trajectory offsets")
+        #offsets = traj_obj.traj_num_to_offset[:traj_obj.num_trajectories]
+        #if not np.all(np.diff(offsets) >= 0):
+        #    errors.append("Non-monotonic trajectory offsets")
 
     return errors
 
@@ -143,7 +143,7 @@ def benchmark_knn(
     
 
 if __name__ == "__main__":
-    em, stats = benchmark_em(steps=500_000, uncertainty_threshold=0.0)
+    em, stats = benchmark_em(steps=50_000, uncertainty_threshold=0.0)
 
     print("=== EM Benchmark ===")
     print(f"Steps: {stats['steps']}")

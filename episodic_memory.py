@@ -276,220 +276,46 @@ class EpisodicMemory(Dataset):
     #     raise NotImplementedError("kNN method not implemented yet.")
     
 class TrajectoryObject:
-    """
-    Memory object for trajectories
-    """
     def __init__(self, trajectory_length: int):
-        """
-        Docstring for __init__
-        
-        :param trajectory_length: Length of expected trajectory
-        :type trajectory_length: int
-        """
         self.trajectory_length: int = trajectory_length
-        """The maximum length each trajectory will have."""
         self.free_space: int = trajectory_length
-        """How much free space this object still has. Always resets if new trajectory starts."""
-        self.memory: np.array = np.empty((trajectory_length,), dtype=object)  # TODO: add size of tuple (z_t', a_t')
-        """"The actual trajectories."""
 
-        self.traj_num_to_offset : np.array = np.zeros((10,), dtype=int) # 10 is test value for now
-        """"The actual trajectory starting index."""
         self.num_trajectories : int = 0
-        """"Trajectory counter."""
+        self.trajectory_memory: dict = {}
+        self.current_trajectory_id: int = 0
+
+        # self.memory: np.array = np.empty((trajectory_length,), dtype=object)  # TODO: add size of tuple (z_t', a_t')
+        # self.traj_num_to_offset : np.array = np.zeros((10,), dtype=int) # 10 is test value for now
 
     def new_traj(self):
-        """"Extend the internal memory, so it can hold another trajectory.
-
-        :return: The internal number for the new trajectory in this object.
-        """
         nr_idx = self.num_trajectories
-        self.num_trajectories += 1
 
-        if self.traj_num_to_offset.shape[0] <= self.num_trajectories + 1:
-            self.traj_num_to_offset = np.concatenate(
-                (self.traj_num_to_offset, np.zeros((10,), dtype=int)),
-                axis=0
-            )
-
-        self.memory = np.concatenate((self.memory, np.empty((self.trajectory_length-self.free_space,), dtype=object)), axis=0) # possible if lenght-freespace = 0 ??? # TODO: add size of tuple (z_t', a_t')
+        self.trajectory_memory[nr_idx] = np.empty(self.trajectory_length, dtype=object)
         self.free_space = self.trajectory_length
-        self.traj_num_to_offset[nr_idx] = self.last_idx()
 
+        self.current_trajectory_id = nr_idx
+        self.num_trajectories += 1
         return nr_idx
 
     def del_traj(self, traj_nr):
-        """ This function deletes a trajectory (a contiguous block of entries) from the internal memory based on a given trajectory number.
-        It: Computes the start and end indices of the trajectory to remove using traj_num_to_offset.
-        Removes that slice from self.memory.
-        Shifts all subsequent data left to fill the gap.
-        Updates traj_num_to_offset so that indices of following trajectories are decremented by the length of the deleted trajectory.
-        So 'traj_nr' will now point to the start of the 'traj_nr' + 1 trajectory
-        Handles edge cases such as deleting the last trajectory or an empty trajectory.
-        Delete a trajectory by its number 
-
-        :param value: internal trajectory number to delete.
-        """
-        start_idx = self.traj_num_to_offset[traj_nr-1]+self.trajectory_length if traj_nr-1 >=0 else 0
-        end_idx = self.traj_num_to_offset[traj_nr+1] if traj_nr < self.traj_num_to_offset.shape[0]-1 else self.memory.shape[0]
-
-        # print("DELETE TRAJ NR:", traj_nr, " FROM ", start_idx, " TO ", end_idx)
-
-        to_delete = (end_idx - start_idx)
-        if to_delete > 0:
-            # if self.memory.shape[0] != end_idx:
-            ## np.concatenate([array([], dtype=int64), array([2, 3, 4])], axis=0) -> array([2, 3, 4]) ~Good
-            self.memory = np.concatenate([self.memory[:start_idx], self.memory[end_idx:]], axis = 0) # +1-1*1/1????
-            # elif start_idx == 0:
-            #     self.memory = self.memory[end_idx:]
-            # else:
-            #     self.memory = self.memory[:start_idx]
-
-            # decrement following trajectory indices by length of deleted trajectory
-            if traj_nr + 1 < self.num_trajectories:
-                temp = np.zeros_like(self.traj_num_to_offset)
-                temp[traj_nr+1:] = (end_idx - start_idx)
-
-                self.traj_num_to_offset -= temp
-            # traj_nr marks the last trajectory
-            else:
-                self.traj_num_to_offset[traj_nr] = start_idx
-                self.free_space = 0
-
-        else:
-            self.traj_num_to_offset[traj_nr] = self.traj_num_to_offset[traj_nr+1] if traj_nr + 1 < self.num_trajectories else start_idx
+        del(self.trajectory_memory[traj_nr])
 
     def add(self, value: tuple) -> int:
-        """
-        Add a value into the trajectory.
-                
-        :param value: The value to add.
-        :return: The remaining free space.
-        """
-        self.memory[-self.free_space] = value # TODO: add tuple (z_t', a_t')
+        self.trajectory_memory[self.current_trajectory_id][-self.free_space] = value
         self.free_space -= 1
 
-        # print("ADD VALUE:", value)
-
         return self.free_space
+    
 
-    def last_idx(self):
-        return self.memory.shape[0] - self.free_space
+    def memory(self):
+        return self.trajectory_memory[self.current_trajectory_id]
+        """
+        memory = self.trajectory_memory[0]
+        for i in range(1,self.num_trajectories):
+            memory = np.concatenate(memory, self.trajectory_memory[i])
+        return memory
+        """
+
 
     def __str__(self):
-        return f"TrajectoryObj| Free space: {self.free_space}| Trajectory length: {self.trajectory_length} \
-| Traj num. to offset: {self.traj_num_to_offset}"
-
-# class HybridKNN:
-#     def __init__(self, latent_tuples, w_discrete=1.0, w_cont=1.0, include_a=True):
-#         """
-#         latent_tuples: list of tuples (z, h, a)
-#             z: discrete latent [num_latent_dims, num_categories] (one-hot)
-#             h: continuous hidden state vector
-#             a: discrete action one-hot vector
-#         w_discrete: weight for discrete Hamming distance
-#         w_cont: weight for continuous Euclidean distance
-#         include_a: whether to include action in distance
-#         """
-#         self.w_discrete = w_discrete
-#         self.w_cont = w_cont
-#         self.include_a = include_a
-        
-#         # Stack discrete latents and actions
-#         self.Z = np.array([z.ravel() for z, _, a in latent_tuples])
-#         if include_a:
-#             self.A = np.array([a.ravel() for _, _, a in latent_tuples])
-#         else:
-#             self.A = None
-        
-#         # Stack continuous hidden states
-#         self.H = np.array([h for _, h, _ in latent_tuples])
-
-#     def query(self, query_tuple, k=5):
-#         zq, hq, aq = query_tuple
-#         zq_flat = zq.ravel()
-#         hq_flat = hq.ravel()
-#         if self.include_a and aq is not None:
-#             aq_flat = aq.ravel()
-#         else:
-#             aq_flat = None
-        
-#         # --- Hamming distance for discrete latents ---
-#         hz = np.mean(self.Z != zq_flat, axis=1)  # [num_samples]
-        
-#         if self.include_a and aq_flat is not None:
-#             ha = np.mean(self.A != aq_flat, axis=1)
-#             hamming_dist = hz + ha
-#         else:
-#             hamming_dist = hz
-        
-#         # --- Euclidean distance for continuous h ---
-#         cont_dist = np.linalg.norm(self.H - hq_flat, axis=1)
-        
-#         # --- Hybrid distance ---
-#         dist = self.w_discrete * hamming_dist + self.w_cont * cont_dist
-        
-#         # --- kNN ---
-#         idxs = np.argsort(dist)[:k]
-#         return idxs, dist[idxs]
-
-
-
-
-
-# import torch
-
-# class HybridKNNTorch:
-#     def __init__(self, latent_tuples, device='cuda', w_discrete=1.0, w_cont=1.0, include_a=True):
-#         """
-#         latent_tuples: list of tuples (z, h, a)
-#             z: [num_latent_dims, num_categories] one-hot
-#             h: continuous hidden state vector
-#             a: one-hot action
-#         device: 'cuda' or 'cpu'
-#         w_discrete: weight for discrete Hamming distance
-#         w_cont: weight for continuous Euclidean distance
-#         include_a: whether to include actions in distance
-#         """
-#         self.device = device
-#         self.w_discrete = w_discrete
-#         self.w_cont = w_cont
-#         self.include_a = include_a
-
-#         # Stack and move to device
-#         self.Z = torch.stack([torch.tensor(z, dtype=torch.float32) for z, _, _ in latent_tuples]).to(device)  # [N, z_dim, num_classes]
-#         if include_a:
-#             self.A = torch.stack([torch.tensor(a, dtype=torch.float32) for _, _, a in latent_tuples]).to(device)
-#         else:
-#             self.A = None
-#         self.H = torch.stack([torch.tensor(h, dtype=torch.float32) for _, h, _ in latent_tuples]).to(device)
-
-#         # Flatten discrete tensors for distance computation
-#         self.Z_flat = self.Z.flatten(start_dim=1)  # [N, z_dim*num_classes]
-#         if self.include_a and self.A is not None:
-#             self.A_flat = self.A.flatten(start_dim=1)  # [N, a_dim]
-
-#     def query(self, query_tuple, k=5):
-#         zq, hq, aq = query_tuple
-#         zq = torch.tensor(zq, dtype=torch.float32, device=self.device).flatten().unsqueeze(0)  # [1, z_dim*num_classes]
-#         hq = torch.tensor(hq, dtype=torch.float32, device=self.device).unsqueeze(0)  # [1, h_dim]
-#         if self.include_a and aq is not None:
-#             aq = torch.tensor(aq, dtype=torch.float32, device=self.device).flatten().unsqueeze(0)  # [1, a_dim]
-
-#         # --- Hamming distance for discrete parts ---
-#         hz = (self.Z_flat != zq).float().mean(dim=1)  # [N]
-#         if self.include_a and aq is not None:
-#             ha = (self.A_flat != aq).float().mean(dim=1)
-#             hamming_dist = hz + ha
-#         else:
-#             hamming_dist = hz
-
-#         # --- Euclidean distance for continuous h ---
-#         cont_dist = torch.norm(self.H - hq, dim=1)  # [N]
-
-#         # --- Hybrid distance ---
-#         dist = self.w_discrete * hamming_dist + self.w_cont * cont_dist
-
-#         # --- kNN ---
-#         distances, indices = torch.topk(dist, k=k, largest=False)
-#         return indices.cpu().numpy(), distances.cpu().numpy()
+        return f"TrajectoryObj| Free space: {self.free_space}| Trajectory length: {self.trajectory_length}"
