@@ -115,7 +115,7 @@ class WorldModel(nn.Module):
         with tools.RequiresGrad(self):
             with torch.cuda.amp.autocast(self._use_amp):
                 embed = self.encoder(data)
-                post, prior = self.dynamics.observe(
+                post, prior = self.dynamics.observe(    # self.dynamics = RSSM
                     embed, data["action"], data["is_first"]
                 )
                 kl_free = self._config.kl_free

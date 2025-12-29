@@ -1,5 +1,7 @@
 import numpy as np
+import hnswlib
 from torch.utils.data import Dataset, DataLoader
+import torch
 from sklearn.neighbors import KNeighborsClassifier
 
 class EpisodicMemory(Dataset):
@@ -11,7 +13,7 @@ class EpisodicMemory(Dataset):
                     nr stores the number within trajectory object
                 ...
     """
-    def __init__(self, trajectory_length: int, uncertainty_threshold: float, z_shape, action_shape, k_nn: int = 5):
+    def __init__(self, trajectory_length: int, uncertainty_threshold: float, z_shape, action_shape, k_nn: int = 5, max_elements: int = 1000):
         """
         Docstring for __init__
         
@@ -35,6 +37,13 @@ class EpisodicMemory(Dataset):
 
         self.prev_state = None
 
+        self.hnsw_storage: hnswlib.Index = None
+        self._init_hnsw(max_elements=max_elements*2, dim = 32*32+512+6)
+        self.step_counter = 0
+        self.max_elements = max_elements
+
+
+
     def __len__(self):
         return len(self.trajectories)
 
@@ -48,7 +57,7 @@ class EpisodicMemory(Dataset):
         self.current_trajectory = trajectory
 
         # self.trajectories[key] = (trajectory, trajectory.last_idx(), uncertainty)
-        self.trajectories[key] = (trajectory, trajectory.new_traj(), uncertainty)
+        self.trajectories[key] = [trajectory, trajectory.new_traj(), uncertainty, self.step_counter]
         
     def __fill_traj(self, value):
         """ Adds a new transition (z, a) to the current trajectory. If the trajectory becomes full, it clears current_trajectory."""
@@ -109,13 +118,15 @@ class EpisodicMemory(Dataset):
         else:
             self.prev_state = state #.copy()?
 
-    def flatten_key(self, key):
-        """Convert (z, h, a) tensors into one numpy vector."""
-        z, h, a = key  # each is a torch tensor
-        z = z.flatten().cpu().numpy()
-        h = h.flatten().cpu().numpy()
-        a = a.flatten().cpu().numpy()
-        return np.concatenate([z, h, a], axis=0)
+        self.step_counter += 1
+
+    # def _flatten_key(self, key):
+    #     """Convert (z, h, a) tensors into one numpy vector."""
+    #     z, h, a = key  # each is a torch tensor
+    #     z = z.flatten().cpu().numpy()
+    #     h = h.flatten().cpu().numpy()
+    #     a = a.flatten().cpu().numpy()
+    #     return np.concatenate([z, h, a], axis=0)
     
     def __str__(self):
         return f"EM| Num trajectories: {len(self.trajectories)}\
@@ -129,98 +140,15 @@ class EpisodicMemory(Dataset):
         # mem, offset, _ = self.trajectories[key]
         # sample = mem.get_trajectory(offset)
         # return sample
-    
-    def get_data_loader(self) -> DataLoader: # does this make sense? ~ Jannek: ¯\_(ツ)_/¯
-        return DataLoader(self, batch_size=1, shuffle=False)
-    
-    # this would ne similar to their train and eval approach for Dreamer agent
-    def get_data_generator(self, batch_length: int, seed: int = 42):
-        # np_random = np.random.RandomState(seed)
 
-        # # !! this code still does random sampling, not simple iteration over items !!
-        # while True:
-        #     # If there are no stored trajectories we cannot sample anything.
-        #     # Yield an empty dict and continue; the caller can decide how to handle  this situation (e.g. skip a training step).
-        #     if len(self.trajectories) == 0:
-        #         yield {}
-        #         continue
-
-        #     size = 0                # how many timesteps we have collected so far
-        #     batch = None            # the dict that will hold the concatenated data
-
-        #     # Uniform sampling probabilities – replace with a smarter scheme later.
-        #     traj_keys = list(self.trajectories.keys())
-        #     p = np.ones(len(traj_keys), dtype=np.float32)
-        #     p /= p.sum()
-
-        #     # 4️⃣  Keep pulling trajectories until we have at least `batch_length`
-        #     while size < batch_length:
-        #         # 4.1️⃣  Choose a trajectory (with replacement)
-        #         chosen_key = np_random.choice(traj_keys, p=p)
-        #         traj_obj, offset, _ = self.trajectories[chosen_key]
-
-        #         # 4.2️⃣  Extract the raw memory stored in the trajectory.
-        #         #        We expect `traj_obj.memory` to be a dict of NumPy arrays
-        #         #        (e.g. {"z": ..., "h": ..., "action": ..., "reward": ...}).
-        #         assert(traj_obj is not None)
-        #         assert(isinstance(traj_obj.memory, np.array))
-        #         mem: np.array = traj_obj.memory
-
-        #         # 4.3️⃣  Determine the length of the trajectory.
-        #         total_len = len(next(iter(mem)))
-
-        #         # Skip trajectories that are too short to provide at least one
-        #         # transition (the original code requires `total >= 2`).
-        #         if total_len < 2:
-        #             continue
-
-        #         # 4.4️⃣  First slice of the batch (or initialise it)
-        #         if batch is None:
-        #             # Random start index inside the chosen trajectory.
-        #             start_idx = int(np_random.randint(0, total_len - 1))
-        #             end_idx = min(start_idx + batch_length, total_len)
-
-        #             batch = {
-        #                 mem[start_idx:end_idx].copy()
-        #             }
-
-        #             # Mark the first transition of the newly‑created batch.
-        #             if "is_first" in batch:
-        #                 batch["is_first"][0] = True
-
-        #         # 4.5️⃣  Subsequent slices – we always continue from the *beginning*
-        #         #       of a trajectory (index 0) because the original Dreamer code
-        #         #       does exactly that when it needs to fill the remaining space.
-        #         else:
-        #             # How many more timesteps do we still need?
-        #             needed = batch_length - size
-        #             # We always start from the beginning of the trajectory.
-        #             start_idx = 0
-        #             end_idx = min(start_idx + needed, total_len)
-
-        #             # Append the new slice to the existing batch.
-        #             batch = {
-        #                 k: np.append(batch[k],
-        #                              v[start_idx:end_idx].copy(),
-        #                              axis=0)
-        #                 for k, v in mem_dict.items()
-        #                 if "log_" not in k
-        #             }
-
-        #             # Fix the ``is_first`` flag for the newly‑added segment.
-        #             if "is_first" in batch:
-        #                 batch["is_first"][size] = True
-
-        #         # 4.6️⃣  Update bookkeeping
-        #         size = len(next(iter(batch.values())))
-
-        #     yield batch
-        pass
-        #### How they have dont it: ####
-        # episodes -> <class 'collections.OrderedDict'>
-        #   keys: file_names
-        #   values: <class 'dict'> | len = 7
-        # ... see tools.py
+    def get_samples(self):
+        """ Return all stored trajectories as list of samples.
+            Each sample is a tuple: starting_state, transitions)
+                starting_state: (h_t, z_t, a_t)
+                transitions: list of (z_{t'}, a_{t'})
+        """
+        # TODO:
+        return []
 
     # def add(self, key: tuple, value: tuple, uncertainty: float):
     #     """ Add new trajectory """
@@ -231,6 +159,38 @@ class EpisodicMemory(Dataset):
 
     #     trajectory.add(value)
 
+    def _flatten_key(self, k: torch.Tensor):
+        z, h, a = k  # each is a torch tensor
+        z = z.detach().cpu().numpy().flatten()
+        h = h.detach().cpu().numpy().flatten()
+        a = a.detach().cpu().numpy().flatten()
+
+        res = np.concatenate([z, h, a])
+        return res
+
+    def _init_hnsw(self, max_elements, dim, rebuild=False):
+        # M: max outgoing connections in graph, higher is better but slower, highly connected to dims
+        # ef_construction: construction accuracy/speed tradeoff
+        self.hnsw_storage = hnswlib.Index(space="l2", dim=dim)
+        self.hnsw_storage.init_index(max_elements, M = 16, ef_construction = 100, allow_replace_delete=True)
+        # ef: query accuracy
+        self.hnsw_storage.set_ef(50)
+        if rebuild:
+            assert(max_elements>=len(self.trajectories))
+            keys = np.array(list(map(lambda x: self._flatten_key(x).reshape(1, -1), self.trajectories.keys())))
+            self.hnsw_storage.add_items(keys)
+
+    def _prune_memory(self, prune_fraction: float=0.05):
+        to_prune = int(len(self.trajectories) * prune_fraction)
+        # recalc all uncertainties or do this in extra training?
+        pass
+    
+    def _add_hnsw(self, key):
+        if self.hnsw_storage.get_current_count() == self.hnsw_storage.get_max_elements():
+            print("Problem")
+        key = np.array([self._flatten_key(key).reshape(1, -1)])
+        self.hnsw_storage.add_items(key)
+        
     def kNN(self, key: tuple, k: int = 1):
         """Return the k-nearest neighbors among stored trajectory keys."""
         

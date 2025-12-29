@@ -141,6 +141,32 @@ class Dreamer(nn.Module):
             else:
                 self._metrics[name].append(value)
 
+    def _rehearsal_train(self, episodic_memory: EM, train:bool, rehearsal_steps: int=1):
+        for _ in range(rehearsal_steps):
+            # call self._train with data from episodic memory
+            for traj in episodic_memory.get_samples(): # [traj1, traj2, ...]
+                starting_state, transitions = traj
+
+                # Keys: (h_t, z_t, a_t)
+                # Values: trajectory τ = {(z_t', a_t')}
+
+                # set starting_state for self._wm.dynamics
+                    # TODO
+
+                for step_data in transitions:
+                    # execute action, get next state
+                    # prepare data dict for self._train
+                    pass
+                
+                if train:
+                    # calculate loss and backpropagate
+                        # TODO
+                        # TODO
+                    pass
+
+                # TODO: update uncertainties of this trajectory after training
+                # self._update_uncertainties(starting_state, uncvertainty)
+
 
 def count_steps(folder):
     # print(f"\n!!!COUNTSTEPS: {folder} -> {sum(int(str(n).split("-")[-1][:-4]) - 1 for n in folder.glob("*.npz"))}")
@@ -159,7 +185,7 @@ def make_env(config, mode, id):
         import envs.dmc as dmc
 
         env = dmc.DeepMindControl(
-            task, config.action_repeat, config.size, seed=config.seed + id
+            task, config.action_repeat, conf_model_optig.size, seed=config.seed + id
         )
         env = wrappers.NormalizeActions(env)
     elif suite == "atari":
